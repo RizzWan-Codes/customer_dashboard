@@ -1,0 +1,17 @@
+{
+  "name": "delivery-app-customer",
+  "version": "1.0.0",
+  "description": "Customer dashboard + Razorpay serverless backend for Delivery App",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "vercel-build": "echo 'Vercel build complete'"
+  },
+  "dependencies": {
+    "razorpay": "^2.9.6"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": "20.x"
+  }
+}
