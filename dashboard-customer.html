@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Customer Dashboard — Delivery App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    .scroll-y { max-height: 360px; overflow:auto; }
+    #map { height: 300px; border-radius: 8px; }
+  </style>
+</head>
+<body class="font-sans bg-gray-50 text-gray-900">
+
+  <!-- Navbar -->
+  <header class="bg-white shadow sticky top-0 z-40">
+    <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <a href="index.html" class="text-2xl font-bold text-orange-500">Delivery App</a>
+        <span class="hidden sm:inline text-sm text-gray-500">Customer Dashboard</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="clearOrdersBtn" class="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600">Clear Orders</button>
+        <button id="logout" class="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container mx-auto px-4 py-8 grid gap-6 lg:grid-cols-4">
+    <!-- Menu -->
+    <section class="lg:col-span-2 bg-white rounded-xl shadow p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold">Menu</h2>
+        <input id="menuSearch" type="search" placeholder="Search dishes..." class="px-3 py-2 border rounded w-1/2" />
+      </div>
+      <div id="menuList" class="grid gap-4 md:grid-cols-2"></div>
+    </section>
+
+    <!-- Cart -->
+    <section class="lg:col-span-1 bg-white rounded-xl shadow p-6">
+      <h3 class="text-lg font-semibold mb-4">Your Cart</h3>
+      <div id="cartItems" class="space-y-3"><div class="text-sm text-gray-500">No items in cart</div></div>
+      <div class="mt-4 border-t pt-4">
+        <div class="flex justify-between text-sm text-gray-600"><span>Subtotal</span><span id="subtotal">₹0</span></div>
+        <div class="flex justify-between text-sm text-gray-600"><span>Delivery</span><span id="deliveryFee">₹40</span></div>
+        <div class="flex justify-between font-semibold mt-3"><span>Total</span><span id="total">₹0</span></div>
+        <button id="checkoutBtn" class="w-full mt-4 px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600">Checkout</button>
+      </div>
+    </section>
+
+    <!-- Orders -->
+    <section class="lg:col-span-1 bg-white rounded-xl shadow p-6">
+      <h3 class="text-lg font-semibold mb-4">Your Orders</h3>
+      <div id="ordersList" class="space-y-3 scroll-y mb-4"></div>
+
+      <h4 class="text-sm font-semibold mb-2">Track Partner</h4>
+      <div id="mapPlaceholder" class="text-sm text-gray-500 mb-2">Select an order with an assigned partner to see live location.</div>
+      <div id="map" style="display:none"></div>
+    </section>
+  </main>
+
+  <footer class="text-center text-xs text-gray-500 py-6">Connected to Firestore</footer>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { 
+      getFirestore, collection, onSnapshot, query, where, doc, getDoc, setDoc, addDoc, serverTimestamp 
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+    const BACKEND_URL = "/api/create-order";  // ✅ Vercel backend (no hardcoding needed)
+    const RAZORPAY_KEY_ID = "rzp_test_1234567890"; // 🔑 Replace with your real Razorpay key
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAAS1APsAUvY8acQ8TzkJD3wbTcvGuJtbA",
+      authDomain: "delivery-app-51ed0.firebaseapp.com",
+      projectId: "delivery-app-51ed0",
+      storageBucket: "delivery-app-51ed0.appspot.com",
+      messagingSenderId: "253451377995",
+      appId: "1:253451377995:web:c4f3964d87b4e485f15cce",
+      measurementId: "G-FNR3QCC6Q2"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // Elements
+    const menuList = document.getElementById("menuList");
+    const menuSearch = document.getElementById("menuSearch");
+    const cartItems = document.getElementById("cartItems");
+    const subtotalEl = document.getElementById("subtotal");
+    const totalEl = document.getElementById("total");
+    const ordersList = document.getElementById("ordersList");
+
+    const DELIVERY_FEE = 40;
+    let CART = [];
+    let DISHES = [];
+    let CURRENT_UID = null;
+    let clearedAt = null;
+
+    // Cart render
+    function renderCart(){
+      cartItems.innerHTML = "";
+      if(CART.length === 0){
+        cartItems.innerHTML = '<div class="text-sm text-gray-500">No items in cart</div>';
+        subtotalEl.textContent = "₹0";
+        totalEl.textContent = "₹0";
+        return;
+      }
+      let subtotal = 0;
+      CART.forEach(it=>{
+        subtotal += it.price * it.qty;
+        const row = document.createElement("div");
+        row.className = "flex justify-between";
+        row.innerHTML = `<div>${it.name} (x${it.qty})</div><div>₹${it.price * it.qty}</div>`;
+        cartItems.appendChild(row);
+      });
+      subtotalEl.textContent = "₹" + subtotal;
+      totalEl.textContent = "₹" + (subtotal + DELIVERY_FEE);
+    }
+
+    function addToCart(dish){
+      const exists = CART.find(c=>c.id===dish.id);
+      if(exists) exists.qty++;
+      else CART.push({ ...dish, qty:1 });
+      renderCart();
+    }
+
+    function renderMenu(dishes){
+      menuList.innerHTML = "";
+      dishes.forEach(d=>{
+        const el = document.createElement("div");
+        el.className = 'bg-gray-50 rounded-xl shadow p-3 flex flex-col';
+        el.innerHTML = `
+          <img src="${d.img || 'https://via.placeholder.com/150'}" alt="${d.name}" class="w-full h-28 object-cover rounded mb-3">
+          <h4 class="font-semibold">${d.name}</h4>
+          <div class="flex items-center justify-between mt-2">
+            <div class="text-orange-500 font-bold">₹${d.price}</div>
+            <button class="px-3 py-1 bg-orange-500 text-white rounded text-sm">Add</button>
+          </div>
+        `;
+        el.querySelector("button").onclick = () => addToCart(d);
+        menuList.appendChild(el);
+      });
+    }
+
+    // Auth
+    onAuthStateChanged(auth, async (user)=>{
+      if(!user){ location.href="login.html"; return; }
+      CURRENT_UID = user.uid;
+
+      const custRef = doc(db, "customers", CURRENT_UID);
+      const custSnap = await getDoc(custRef);
+      if(custSnap.exists() && custSnap.data().clearedAt){
+        clearedAt = custSnap.data().clearedAt.toMillis();
+      }
+
+      // Menu listener
+      onSnapshot(collection(db, "dishes"), (snap)=>{
+        DISHES = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+        renderMenu(DISHES);
+      });
+
+      // Orders listener
+      const q = query(collection(db, "orders"), where("customerId","==",CURRENT_UID));
+      onSnapshot(q, async (snap)=>{
+        ordersList.innerHTML = "";
+        for(const docSnap of snap.docs){
+          const o = { id: docSnap.id, ...docSnap.data() };
+          if (clearedAt && o.createdAt?.seconds * 1000 < clearedAt) continue;
+
+          let partnerName = "Not assigned";
+          if(o.deliveryPartnerId){
+            const partnerDoc = await getDoc(doc(db,"partners",o.deliveryPartnerId));
+            if(partnerDoc.exists()) partnerName = partnerDoc.data().name || partnerDoc.id;
+          }
+
+          const card = document.createElement("div");
+          card.className = "p-3 border rounded";
+          card.innerHTML = `
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="font-semibold">Order #${o.id}</div>
+                <div class="text-sm text-gray-500">Status: ${o.status}</div>
+                <div class="text-xs text-gray-500">Partner: ${partnerName}</div>
+              </div>
+              <div class="text-sm font-bold text-orange-500">₹${o.total}</div>
+            </div>
+          `;
+          ordersList.appendChild(card);
+        }
+      });
+
+      // 🧭 Capture live location
+      navigator.geolocation.watchPosition(
+        async (pos)=>{
+          const { latitude, longitude } = pos.coords;
+          await setDoc(doc(db,"customers",CURRENT_UID), { lat: latitude, lng: longitude }, { merge:true });
+        },
+        (err)=>console.error("Geo error:",err),
+        { enableHighAccuracy:true }
+      );
+    });
+
+    // Search
+    menuSearch.addEventListener("input",(e)=>{
+      const keyword = e.target.value.toLowerCase();
+      const filtered = DISHES.filter(d=>d.name.toLowerCase().includes(keyword));
+      renderMenu(filtered);
+    });
+
+    // Razorpay Checkout
+    document.getElementById("checkoutBtn").onclick = async ()=>{
+      if(CART.length===0) return alert("Cart is empty");
+      const subtotal = CART.reduce((s,it)=>s+it.price*it.qty,0);
+      const total = subtotal + DELIVERY_FEE;
+
+      const res = await fetch(BACKEND_URL,{
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ amount: total })
+      });
+      const rOrder = await res.json();
+
+      const options = {
+        key: RAZORPAY_KEY_ID,
+        amount: rOrder.amount,
+        currency: "INR",
+        name: "Delivery App",
+        description: "Order Payment",
+        order_id: rOrder.id,
+        handler: async (response)=>{
+          await addDoc(collection(db,"orders"), {
+            customerId: CURRENT_UID,
+            restaurantId: CART[0].vendorId,
+            items: CART.map(it=>({
+              dishId: it.id,
+              dishName: it.name,
+              qty: it.qty,
+              price: it.price
+            })),
+            total,
+            status: "paid",
+            paymentId: response.razorpay_payment_id,
+            razorpayOrderId: response.razorpay_order_id,
+            createdAt: serverTimestamp()
+          });
+          CART = [];
+          renderCart();
+          alert("Payment successful! ✅");
+        }
+      };
+      new Razorpay(options).open();
+    };
+
+    // Clear Orders
+    document.getElementById("clearOrdersBtn").onclick = async ()=>{
+      if(!confirm("Are you sure you want to clear all your orders?")) return;
+      clearedAt = Date.now();
+      await setDoc(doc(db,"customers",CURRENT_UID), { clearedAt: serverTimestamp() }, { merge:true });
+    };
+
+    // Logout
+    document.getElementById("logout").onclick = async ()=>{
+      await signOut(auth);
+      location.href="login.html";
+    };
+  </script>
+</body>
+</html>

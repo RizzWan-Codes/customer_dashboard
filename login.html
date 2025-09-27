@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Customer Login | Delivery App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    .form-container { position: relative; overflow: hidden; height: 400px; }
+    .form-slide { position: absolute; top: 0; width: 100%; transition: transform 0.5s ease-in-out, opacity 0.5s ease-in-out; }
+    .form-slide.hidden-left { transform: translateX(-100%); opacity: 0; pointer-events: none; }
+    .form-slide.hidden-right { transform: translateX(100%); opacity: 0; pointer-events: none; }
+    .form-slide.active { transform: translateX(0); opacity: 1; pointer-events: auto; }
+  </style>
+</head>
+<body class="bg-gray-50 font-sans">
+
+  <!-- Mobile Header -->
+  <div class="md:hidden flex items-center px-4 py-3 bg-white shadow">
+    <button onclick="window.location.href='index.html'" class="text-gray-700 text-2xl mr-4">←</button>
+    <h1 class="text-xl font-bold text-orange-500">Delivery App</h1>
+  </div>
+
+  <!-- Main wrapper -->
+  <div class="container mx-auto flex justify-center items-center min-h-screen px-4">
+    <div class="bg-white shadow-lg rounded-xl w-full max-w-md p-6 sm:p-8">
+      <h1 class="hidden md:block text-3xl font-bold text-center text-orange-500 mb-6">Delivery App</h1>
+
+      <!-- Tabs -->
+      <div class="flex justify-center mb-6">
+        <button id="loginTab" class="w-1/2 py-2 font-semibold border-b-2 border-orange-500 text-orange-500">Login</button>
+        <button id="signupTab" class="w-1/2 py-2 font-semibold border-b-2 border-transparent text-gray-500 hover:text-orange-500">Sign Up</button>
+      </div>
+
+      <!-- Forms wrapper -->
+      <div class="form-container">
+        <!-- Login Form -->
+        <form id="loginForm" class="form-slide active space-y-4">
+          <input id="loginEmail" type="email" placeholder="Email" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" required>
+          <input id="loginPassword" type="password" placeholder="Password" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" required>
+          <button type="submit" class="w-full bg-orange-500 text-white py-2 rounded-lg hover:bg-orange-600 transition">Login</button>
+          <p class="text-center text-sm text-gray-500 mt-3">Don’t have an account? <span id="switchToSignup" class="text-orange-500 cursor-pointer">Sign Up</span></p>
+        </form>
+
+        <!-- Signup Form -->
+        <form id="signupForm" class="form-slide hidden-right space-y-4">
+          <input id="signupName" type="text" placeholder="Full Name" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" required>
+          <input id="signupPhone" type="tel" placeholder="Phone Number" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" required>
+          <input id="signupEmail" type="email" placeholder="Email" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" required>
+          <input id="signupPassword" type="password" placeholder="Password" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" required>
+          <input id="address" type="text" placeholder="Address" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" required>
+          <button type="submit" class="w-full bg-orange-500 text-white py-2 rounded-lg hover:bg-orange-600 transition">Sign Up</button>
+          <p class="text-center text-sm text-gray-500 mt-3">Already have an account? <span id="switchToLogin" class="text-orange-500 cursor-pointer">Login</span></p>
+        </form>
+      </div>
+      <!-- Add this below the forms wrapper -->
+<div class="mt-6 text-center">
+  <button onclick="window.location.href='how-to-login.html'" 
+    class="text-sm text-gray-500 underline hover:text-orange-500">
+    How to Login?
+  </button>
+</div>
+
+    </div>
+  </div>
+
+  <!-- Firebase + Auth -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+    // 🔑 Firebase config (replace with your keys)
+    const firebaseConfig = {
+      apiKey: "AIzaSyAAS1APsAUvY8acQ8TzkJD3wbTcvGuJtbA",
+      authDomain: "delivery-app-51ed0.firebaseapp.com",
+      projectId: "delivery-app-51ed0",
+      storageBucket: "delivery-app-51ed0.appspot.com",  // ✅ fixed bucket
+      messagingSenderId: "253451377995",
+      appId: "1:253451377995:web:c4f3964d87b4e485f15cce",
+      measurementId: "G-FNR3QCC6Q2"
+    };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // Elements
+    const loginTab = document.getElementById("loginTab");
+    const signupTab = document.getElementById("signupTab");
+    const loginForm = document.getElementById("loginForm");
+    const signupForm = document.getElementById("signupForm");
+    const switchToSignup = document.getElementById("switchToSignup");
+    const switchToLogin = document.getElementById("switchToLogin");
+
+    // Toggle
+    function showLogin() {
+      loginForm.classList.add("active");
+      loginForm.classList.remove("hidden-left","hidden-right");
+      signupForm.classList.remove("active");
+      signupForm.classList.add("hidden-right");
+      loginTab.classList.add("border-orange-500","text-orange-500");
+      signupTab.classList.remove("border-orange-500","text-orange-500");
+    }
+    function showSignup() {
+      signupForm.classList.add("active");
+      signupForm.classList.remove("hidden-left","hidden-right");
+      loginForm.classList.remove("active");
+      loginForm.classList.add("hidden-left");
+      signupTab.classList.add("border-orange-500","text-orange-500");
+      loginTab.classList.remove("border-orange-500","text-orange-500");
+    }
+    loginTab.addEventListener("click", showLogin);
+    signupTab.addEventListener("click", showSignup);
+    switchToSignup.addEventListener("click", showSignup);
+    switchToLogin.addEventListener("click", showLogin);
+
+    // Signup
+    signupForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("signupName").value.trim();
+      const phone = document.getElementById("signupPhone").value.trim();
+      const email = document.getElementById("signupEmail").value.trim();
+      const password = document.getElementById("signupPassword").value;
+      const address = document.getElementById("address").value.trim();
+
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        const uid = userCred.user.uid;
+
+        // Save Firestore profile
+        await setDoc(doc(db, "customers", uid), {
+          name, email, phone, address, createdAt: serverTimestamp()
+        });
+
+        // Send email verification
+        await sendEmailVerification(userCred.user);
+
+        // Redirect to verify
+        window.location.href = "verify.html";
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    // Login
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("loginEmail").value.trim();
+      const password = document.getElementById("loginPassword").value;
+
+      try {
+        const userCred = await signInWithEmailAndPassword(auth, email, password);
+
+        if (!userCred.user.emailVerified) {
+          alert("Please verify your email before logging in.");
+          window.location.href = "verify.html";
+          return;
+        }
+
+        const uid = userCred.user.uid;
+        const userDoc = await getDoc(doc(db, "customers", uid));
+
+        if (userDoc.exists()) {
+          window.location.href = "dashboard-customer.html";
+        } else {
+          alert("This account is not registered as a customer!");
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  </script>
+</body>
+</html>
